@@ -1,0 +1,63 @@
+name: Deploy GatePasscode
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions: write-all
+    outputs:
+      status: ${{ steps.pyscripts.conclusion }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.12
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          git clone --depth 1 https://github.com/TorCroft/gatepasscode.git
+          requirements_file="./gatepasscode/requirements.txt"
+          if [ -f $requirements_file ]; then pip install -r $requirements_file; fi
+
+      - name: Run Python Script
+        id: pyscripts
+        env:
+          UID_PWD: ${{ secrets.UID_PWD }}
+        run: |
+          cd gatepasscode
+          python ./index.py >> $GITHUB_STEP_SUMMARY
+
+      - name: Setup Pages
+        if: steps.pyscripts.conclusion == 'success'
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        if: steps.pyscripts.conclusion == 'success'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: "./gatepasscode/page"
+
+  deploy:
+    needs: build
+    if: needs.build.outputs.status == 'success'
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
